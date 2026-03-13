@@ -9,6 +9,7 @@ export class MentraService extends AppServer {
       packageName: config.packageName,
       apiKey: config.apiKey,
       port: config.internalPort,
+      cookieSecret: config.cookieSecret,
     });
 
     this.setupWebview();
