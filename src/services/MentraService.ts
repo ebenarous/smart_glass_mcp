@@ -16,8 +16,8 @@ export class MentraService extends AppServer {
   }
 
   private setupWebview() {
-    this.get("/webview", async (c) => {
-      const userId = c.get("authUserId");
+    this.getExpressApp().get("/webview", async (req, res) => {
+      const userId = (req as any).get?.("authUserId") || (req as any).authUserId || (req as any).userId;
 
       if (userId) {
         const token = await tokenService.getOrCreateToken(userId);
@@ -55,7 +55,7 @@ export class MentraService extends AppServer {
                 <h3>Configuration</h3>
                 <div class="config-item">
                   <div class="label">Server URL</div>
-                  <div class="value">${new URL(c.req.url).protocol}//${new URL(c.req.url).host}/mcp</div>
+                  <div class="value">${req.protocol}://${req.get('host')}/mcp</div>
                 </div>
                 <div class="config-item">
                   <div class="label">Authorization Header</div>
@@ -65,7 +65,7 @@ export class MentraService extends AppServer {
             </body>
           </html>
         `;
-        return c.html(html);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.status(200).send?.(html) || res.end?.(html); return;
       } else {
         const html = `
           <!DOCTYPE html>
@@ -90,7 +90,7 @@ export class MentraService extends AppServer {
             </body>
           </html>
         `;
-        return c.html(html);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.status(200).send?.(html) || res.end?.(html); return;
       }
     });
   }
