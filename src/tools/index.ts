@@ -2,12 +2,14 @@ import { displayTools } from "./display";
 import { audioTools } from "./audio";
 import { inputTools } from "./input";
 import { systemTools } from "./system";
+import { cameraTools } from "./camera";
 
 export const ALL_TOOLS = [
   ...displayTools,
   ...audioTools,
   ...inputTools,
   ...systemTools,
+  ...cameraTools,
 ];
 
 export async function executeTool(
