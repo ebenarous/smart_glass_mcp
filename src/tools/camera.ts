@@ -1,9 +1,48 @@
 import { sessionManager } from "../services/SessionManager";
 
+type StreamStatusSnapshot = {
+  status: string;
+  message?: string;
+  streamId?: string;
+  capturedAt: string;
+  hlsUrl?: string;
+  webrtcUrl?: string;
+  previewUrl?: string;
+  raw: unknown;
+};
+
+// Track the latest ManagedStreamStatus per glasses-session userId.
+// The Mentra SDK pushes status updates via onManagedStreamStatus; we subscribe
+// once per session and store the most recent snapshot for diagnostics.
+const latestStatus = new Map<string, StreamStatusSnapshot>();
+const subscribed = new Set<string>();
+
+function ensureStatusSubscription(userId: string, glasses: any): void {
+  if (subscribed.has(userId)) return;
+  subscribed.add(userId);
+  try {
+    glasses.session.camera.onManagedStreamStatus((s: any) => {
+      latestStatus.set(userId, {
+        status: s.status,
+        message: s.message,
+        streamId: s.streamId,
+        hlsUrl: s.hlsUrl,
+        webrtcUrl: s.webrtcUrl,
+        previewUrl: s.previewUrl,
+        capturedAt: new Date().toISOString(),
+        raw: s,
+      });
+    });
+  } catch (e) {
+    // SDK can throw if subscription mechanics changed; non-fatal
+    console.error("[camera] onManagedStreamStatus subscribe failed", e);
+  }
+}
+
 export const cameraTools = [
   {
     name: "glasses_start_video_stream",
-    description: "Start a managed video stream from the glasses. Mentra cloud hosts the RTMP endpoint and returns HLS / DASH / WebRTC playback URLs.",
+    description: "Start a managed video stream from the glasses. Mentra cloud hosts the RTMP endpoint and returns HLS / DASH / WebRTC playback URLs. Also subscribes to stream status updates accessible via glasses_get_stream_status.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -15,12 +54,15 @@ export const cameraTools = [
       const glasses = sessionManager.getUserSession(userEmail);
       if (!glasses) return { content: [{ type: "text", text: "⚠️ Your glasses are not connected." }] };
 
+      ensureStatusSubscription(glasses.userId, glasses);
+
       try {
         const result = await glasses.session.camera.startManagedStream({
           quality: args.quality ?? "720p",
           enableWebRTC: args.enableWebRTC ?? true,
         });
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        const status = latestStatus.get(glasses.userId);
+        return { content: [{ type: "text", text: JSON.stringify({ ...result, lastStatus: status }, null, 2) }] };
       } catch (e: any) {
         return { content: [{ type: "text", text: `Failed to start stream: ${e.message}` }], isError: true };
       }
@@ -59,6 +101,26 @@ export const cameraTools = [
       const urls = glasses.session.camera.getManagedStreamUrls();
       if (!urls) return { content: [{ type: "text", text: "No active stream." }] };
       return { content: [{ type: "text", text: JSON.stringify(urls, null, 2) }] };
+    }
+  },
+  {
+    name: "glasses_get_stream_status",
+    description: "Get the latest ManagedStreamStatus snapshot from Mentra cloud for the current glasses session. Includes status (initializing/preparing/active/stopping/stopped/error), any error message, streamId, and known playback URLs. Useful for diagnosing why playback URLs return 404.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+    },
+    handler: async (_args: any, userEmail: string) => {
+      const glasses = sessionManager.getUserSession(userEmail);
+      if (!glasses) return { content: [{ type: "text", text: "⚠️ Your glasses are not connected." }] };
+
+      const status = latestStatus.get(glasses.userId);
+      const isActive = glasses.session.camera.isCurrentlyStreaming?.() ?? glasses.session.camera.isManagedStreamActive?.() ?? false;
+
+      if (!status) {
+        return { content: [{ type: "text", text: JSON.stringify({ status: "no_data", isActive, message: "No status updates received yet. Start a stream first." }, null, 2) }] };
+      }
+      return { content: [{ type: "text", text: JSON.stringify({ ...status, isActive }, null, 2) }] };
     }
   }
 ];
