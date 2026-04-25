@@ -104,6 +104,39 @@ export const cameraTools = [
     }
   },
   {
+    name: "glasses_capture_photo",
+    description: "Capture a single photo from the glasses camera (uses session.camera.requestPhoto). Returns the JPEG bytes as base64 plus capture metadata. Use this for low-fps capture when the live RTMP stream is unreliable.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        size: { type: "string", enum: ["small", "medium", "large", "full"], description: "Photo resolution preset (default 'small' for fast transfer)" },
+        compress: { type: "string", enum: ["none", "medium", "heavy"], description: "Compression level (default 'heavy' for fastest transfer)" }
+      }
+    },
+    handler: async (args: any, userEmail: string) => {
+      const glasses = sessionManager.getUserSession(userEmail);
+      if (!glasses) return { content: [{ type: "text", text: "⚠️ Your glasses are not connected." }] };
+
+      try {
+        const photo = await glasses.session.camera.requestPhoto({
+          size: args.size ?? "small",
+          compress: args.compress ?? "heavy"
+        });
+        const base64 = photo.buffer.toString("base64");
+        const result = {
+          base64,
+          mimeType: photo.mimeType,
+          filename: photo.filename,
+          size: photo.size,
+          capturedAtMs: photo.timestamp instanceof Date ? photo.timestamp.getTime() : Date.now()
+        };
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (e: any) {
+        return { content: [{ type: "text", text: `Failed to capture photo: ${e.message}` }], isError: true };
+      }
+    }
+  },
+  {
     name: "glasses_get_stream_status",
     description: "Get the latest ManagedStreamStatus snapshot from Mentra cloud for the current glasses session. Includes status (initializing/preparing/active/stopping/stopped/error), any error message, streamId, and known playback URLs. Useful for diagnosing why playback URLs return 404.",
     inputSchema: {
